@@ -1,0 +1,65 @@
+{% extends 'Layout/base.html.twig' %}
+
+{% block body %}
+    <video id="stream-video-player" src="http://localhost:8080/hls/toto.m3u8" controls autoplay></video>
+
+{% endblock body %}
+
+{% block javascripts %}
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.18/hls.min.js" integrity="sha512-hARxLWym80kd0Bzl5/93OuW1ujaKfvmJ90yTKak/RB67JuNIjtErU2H7H3bteyfzMuqiSK0tXarT7eK6lEWBBA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const video = document.getElementById('stream-video-player');
+            const streamUrl = video.getAttribute('src');
+            const LIVE_EDGE_MARGIN = 3;
+
+            if (Hls.isSupported()) {
+                const hls = new Hls();
+                hls.loadSource(streamUrl);
+                hls.attachMedia(video);
+
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    video.play().catch((error) => {
+                        console.warn("Autoplay failed:", error.message);
+                    });
+                });
+
+                // Gestion de la synchronisation avec le live
+                hls.on(Hls.Events.LEVEL_LOADED, (event, data) => {
+                    const liveEdge = data.details.liveEdge;
+                    if (liveEdge && video.currentTime < liveEdge - LIVE_EDGE_MARGIN) {
+                        video.currentTime = liveEdge - LIVE_EDGE_MARGIN;
+                    }
+                });
+
+                // Forcer la position de lecture régulièrement (par exemple toutes les 3 secondes)
+                setInterval(() => {
+                    if (hls.latency !== undefined) {
+                        const liveEdge = video.buffered.length ? video.buffered.end(video.buffered.length - 1) : 0;
+                        const currentLatency = liveEdge - video.currentTime;
+
+                        if (currentLatency > LIVE_EDGE_MARGIN) {
+                            video.currentTime = liveEdge - LIVE_EDGE_MARGIN;
+                        }
+                    }
+                }, 3000);
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                // Gestion des flux HLS natifs (Safari)
+                video.src = streamUrl;
+                video.play().catch((error) => {
+                    console.warn("Autoplay failed:", error.message);
+                });
+
+                video.addEventListener('timeupdate', () => {
+                    if (video.buffered.length) {
+                        const liveEdge = video.buffered.end(video.buffered.length - 1);
+                        if (video.currentTime < liveEdge - LIVE_EDGE_MARGIN) {
+                            video.currentTime = liveEdge - LIVE_EDGE_MARGIN;
+                        }
+                    }
+                });
+            } else {
+                console.error("HLS is not supported on this browser.");
+            }
+        });
+    </script>
+{% endblock javascripts %}
